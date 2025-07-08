@@ -1,7 +1,6 @@
 package consul
 
 import (
-	"context"
 	"testing"
 	"time"
 
@@ -43,8 +42,7 @@ func TestPopulateEndpoints(t *testing.T) {
 				},
 			}
 
-			ctx, cancel := context.WithCancel(context.Background())
-			defer cancel()
+			ctx := t.Context()
 			go populateEndpoints(ctx, fcc, in)
 			in <- tt.input
 			time.Sleep(time.Millisecond)

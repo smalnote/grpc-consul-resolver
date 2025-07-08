@@ -46,25 +46,25 @@ type trafficPicker struct {
 
 func (p *trafficPicker) Pick(info balancer.PickInfo) (balancer.PickResult, error) {
 	tagPriority := trafficTagsFromContext(info.Ctx)
-	if len(tagPriority) == 0 {
-		// fallback to round robin
-		return p.pickRoundRobin()
-	}
-
-	// 取优先级最高的
-	maxPriority := 0
-	var pickedConn balancer.SubConn
-	for _, sc := range p.subConns {
-		currPriority := 0
-		for _, tag := range sc.tags {
-			currPriority += int(tagPriority[tag])
+	if len(tagPriority) > 0 {
+		maxPriority := 0
+		var pickedConn balancer.SubConn
+		for _, sc := range p.subConns {
+			currPriority := 0
+			for _, tag := range sc.tags {
+				currPriority += int(tagPriority[tag])
+			}
+			if maxPriority < currPriority {
+				maxPriority = currPriority
+				pickedConn = sc.conn
+			}
 		}
-		if maxPriority < currPriority {
-			maxPriority = currPriority
-			pickedConn = sc.conn
+		if pickedConn != nil {
+			return balancer.PickResult{SubConn: pickedConn}, nil
 		}
 	}
-	return balancer.PickResult{SubConn: pickedConn}, nil
+	// fallback to round robin
+	return p.pickRoundRobin()
 }
 
 func (p *trafficPicker) pickRoundRobin() (balancer.PickResult, error) {
