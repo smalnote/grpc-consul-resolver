@@ -47,6 +47,18 @@ func TestTrafficPicker_TagPriority(t *testing.T) {
 	if id != "C" {
 		t.Errorf("expected SubConn C to be picked, got %s", id)
 	}
+
+	ctx = metadata.NewOutgoingContext(context.Background(),
+		metadata.Pairs("x-traffic-tag", "dev,alpha"))
+
+	result, err = picker.Pick(balancer.PickInfo{Ctx: ctx})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if result.SubConn == nil {
+		t.Errorf("expected round robin picked, got empty")
+	}
 }
 
 func TestTrafficPicker_NoMetadata_RoundRobin(t *testing.T) {
