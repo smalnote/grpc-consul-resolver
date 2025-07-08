@@ -8,6 +8,7 @@ import (
 
 	"github.com/hashicorp/consul/api"
 	"github.com/jpillora/backoff"
+	"google.golang.org/grpc/attributes"
 	"google.golang.org/grpc/grpclog"
 	"google.golang.org/grpc/resolver"
 )
@@ -36,8 +37,8 @@ type servicer interface {
 	Service(string, string, bool, *api.QueryOptions) ([]*api.ServiceEntry, *api.QueryMeta, error)
 }
 
-func watchConsulService(ctx context.Context, s servicer, tgt target, out chan<- []string) {
-	res := make(chan []string)
+func watchConsulService(ctx context.Context, s servicer, tgt target, out chan<- []resolver.Address) {
+	res := make(chan []resolver.Address)
 	quit := make(chan struct{})
 	bck := &backoff.Backoff{
 		Factor: 2,
@@ -82,20 +83,23 @@ func watchConsulService(ctx context.Context, s servicer, tgt target, out chan<- 
 				tgt.String(),
 			)
 
-			ee := make([]string, 0, len(ss))
+			addrs := make([]resolver.Address, 0, len(ss))
 			for _, s := range ss {
 				address := s.Service.Address
 				if s.Service.Address == "" {
 					address = s.Node.Address
 				}
-				ee = append(ee, fmt.Sprintf("%s:%d", address, s.Service.Port))
+				addrs = append(addrs, resolver.Address{
+					Addr:               fmt.Sprintf("%s:%d", address, s.Service.Port),
+					BalancerAttributes: attributes.New("tags", s.Service.Tags),
+				})
 			}
 
-			if tgt.Limit != 0 && len(ee) > tgt.Limit {
-				ee = ee[:tgt.Limit]
+			if tgt.Limit != 0 && len(addrs) > tgt.Limit {
+				addrs = addrs[:tgt.Limit]
 			}
 			select {
-			case res <- ee:
+			case res <- addrs:
 				continue
 			case <-quit:
 				return
@@ -124,18 +128,10 @@ func watchConsulService(ctx context.Context, s servicer, tgt target, out chan<- 
 	}
 }
 
-func populateEndpoints(ctx context.Context, clientConn resolver.ClientConn, input <-chan []string) {
+func populateEndpoints(ctx context.Context, clientConn resolver.ClientConn, input <-chan []resolver.Address) {
 	for {
 		select {
-		case cc := <-input:
-			connsSet := make(map[string]struct{}, len(cc))
-			for _, c := range cc {
-				connsSet[c] = struct{}{}
-			}
-			conns := make([]resolver.Address, 0, len(connsSet))
-			for c := range connsSet {
-				conns = append(conns, resolver.Address{Addr: c})
-			}
+		case conns := <-input:
 			sort.Sort(byAddressString(conns)) // Don't replace the same address list in the balancer
 			err := clientConn.UpdateState(resolver.State{Addresses: conns})
 			if err != nil {

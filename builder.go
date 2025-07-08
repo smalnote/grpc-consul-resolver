@@ -1,3 +1,4 @@
+// Package consul implements gRPC consul resolver.
 package consul
 
 import (
@@ -28,7 +29,7 @@ func (b *builder) Build(url resolver.Target, cc resolver.ClientConn, opts resolv
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	pipe := make(chan []string)
+	pipe := make(chan []resolver.Address)
 	go watchConsulService(ctx, cli.Health(), tgt, pipe)
 	go populateEndpoints(ctx, cc, pipe)
 

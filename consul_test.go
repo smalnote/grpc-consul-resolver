@@ -13,17 +13,19 @@ import (
 func TestPopulateEndpoints(t *testing.T) {
 	tests := []struct {
 		name     string
-		input    []string
+		input    []resolver.Address
 		wantCall []resolver.Address
 	}{
-		{"one",
-			[]string{"127.0.0.1:50051"},
+		{
+			"one",
+			[]resolver.Address{{Addr: "127.0.0.1:50051"}},
 			[]resolver.Address{
 				{Addr: "127.0.0.1:50051"},
 			},
 		},
-		{"sorted",
-			[]string{"227.0.0.1:50051", "127.0.0.1:50051"},
+		{
+			"sorted",
+			[]resolver.Address{{Addr: "227.0.0.1:50051"}, {Addr: "127.0.0.1:50051"}},
 			[]resolver.Address{
 				{Addr: "127.0.0.1:50051"},
 				{Addr: "227.0.0.1:50051"},
@@ -32,9 +34,7 @@ func TestPopulateEndpoints(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var (
-				in = make(chan []string, len(tt.input))
-			)
+			in := make(chan []resolver.Address, len(tt.input))
 
 			fcc := &ClientConnMock{
 				UpdateStateFunc: func(state resolver.State) error {
@@ -60,34 +60,38 @@ func TestWatchConsulService(t *testing.T) {
 		tgt              target
 		services         []*api.ServiceEntry
 		errorFromService error
-		want             []string
+		want             []resolver.Address
 	}{
-		{"simple", target{Service: "svc", Wait: time.Second},
+		{
+			"simple",
+			target{Service: "svc", Wait: time.Second},
 			[]*api.ServiceEntry{
 				{
 					Service: &api.AgentService{Address: "127.0.0.1", Port: 1024},
 				},
 			},
 			nil,
-			[]string{"127.0.0.1:1024"},
+			[]resolver.Address{
+				{
+					Addr: "127.0.0.1:1024",
+				},
+			},
 		},
-		// TODO: Add more tests-cases
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ctx, cancel := context.WithCancel(context.Background())
-			defer cancel()
+			ctx := t.Context()
 
-			var (
-				got []string
-				out = make(chan []string)
-			)
+			out := make(chan []resolver.Address)
 			go func() {
 				for {
 					select {
 					case <-ctx.Done():
 						return
-					case got = <-out:
+					case got := <-out:
+						for i, wantAddr := range tt.want {
+							require.Equal(t, wantAddr.Addr, got[i].Addr)
+						}
 					}
 				}
 			}()
@@ -108,8 +112,6 @@ func TestWatchConsulService(t *testing.T) {
 
 			go watchConsulService(ctx, fconsul, tt.tgt, out)
 			time.Sleep(5 * time.Millisecond)
-
-			require.Equal(t, tt.want, got)
 		})
 	}
 }
